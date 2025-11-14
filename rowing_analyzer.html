@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rowing Technique Analyzer</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom styles for file input */
+        input[type="file"]::file-selector-button {
+            background-color: #3b82f6; /* blue-500 */
+            color: white;
+            border: 0;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem; /* rounded-md */
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        input[type="file"]::file-selector-button:hover {
+            background-color: #2563eb; /* blue-600 */
+        }
+        /* Spinner for progress indicator */
+        .loader-spin {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-2xl mx-auto">
+        
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Rowing Technique Analyzer 🦾</h1>
+            <p class="text-gray-600 mt-2">Upload a short video (5-15 seconds) of your rowing stroke for AI analysis.</p>
+        </div>
+
+        <!-- Video Upload -->
+        <div class="mb-4">
+            <label for="videoUpload" class="block text-sm font-medium text-gray-700 mb-2">Upload Video:</label>
+            <input type="file" id="videoUpload" accept="video/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+        </div>
+
+        <!-- Video Preview -->
+        <div id="videoContainer" class="hidden mb-4 rounded-lg overflow-hidden shadow-inner border border-gray-200">
+            <video id="videoPreview" controls muted playsinline class="w-full h-auto aspect-video bg-gray-900 rounded-lg"></video>
+        </div>
+
+        <!-- Analyze Button -->
+        <button id="analyzeButton" class="hidden w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
+            Analyze My Technique
+        </button>
+
+        <!-- Progress Indicator -->
+        <div id="progressContainer" class="hidden my-6 space-y-4">
+            
+            <!-- Step 1: Extract Frames -->
+            <div id="step1" class="flex items-center text-gray-500">
+                <div id="step1Icon" class="w-6 h-6 mr-3 flex-shrink-0">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+                <span id="step1Text" class="font-medium">Step 1: Extracting video frames</span>
+            </div>
+
+            <!-- Step 2: Analyze Technique -->
+            <div id="step2" class="flex items-center text-gray-500">
+                <div id="step2Icon" class="w-6 h-6 mr-3 flex-shrink-0">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+                <span id="step2Text" class="font-medium">Step 2: Analyzing technique with AI</span>
+            </div>
+            
+            <!-- Icons for different states (to be cloned) -->
+            <div id="iconTemplates" class="hidden">
+                <svg id="iconInProgress" class="w-6 h-6 text-blue-500 loader-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9H4V4m.582 5A8.001 8.001 0 0020 12h-5.418M20 12a8.001 8.001 0 00-15.418 5H20v-5z"></path></svg>
+                <svg id="iconComplete" class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <svg id="iconPending" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorContainer" class="hidden my-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p id="errorText" class="text-red-700 text-center font-medium"></p>
+        </div>
+
+        <!-- Results Display -->
+        <div id="resultsContainer" class="hidden mt-8">
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Analysis Results:</h2>
+            
+            <!-- *** NEW: Frames Container *** -->
+            <div id="framesContainer" class="hidden mb-6">
+                <h3 class="text-lg font-semibold text-gray-700 mb-3">Analyzed Frames:</h3>
+                <div id="framesGrid" class="grid grid-cols-3 gap-2 sm:gap-4">
+                    <!-- Images will be injected here by JS -->
+                </div>
+            </div>
+            
+            <!-- Analysis Text -->
+            <div id="analysisText" class="prose prose-blue max-w-none text-gray-700 whitespace-pre-wrap">
+                <!-- AI-generated text will go here -->
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        // DOM Elements
+        const videoUpload = document.getElementById('videoUpload');
+        const videoContainer = document.getElementById('videoContainer');
+        const videoPreview = document.getElementById('videoPreview');
+        const analyzeButton = document.getElementById('analyzeButton');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const analysisText = document.getElementById('analysisText');
+        const errorContainer = document.getElementById('errorContainer');
+        const errorText = document.getElementById('errorText');
+        
+        // Progress Indicator Elements
+        const progressContainer = document.getElementById('progressContainer');
+        const step1 = document.getElementById('step1');
+        const step1Icon = document.getElementById('step1Icon');
+        const step1Text = document.getElementById('step1Text');
+        const step2 = document.getElementById('step2');
+        const step2Icon = document.getElementById('step2Icon');
+        const step2Text = document.getElementById('step2Text');
+
+        // Icon Templates
+        const iconInProgress = document.getElementById('iconInProgress');
+        const iconComplete = document.getElementById('iconComplete');
+        const iconPending = document.getElementById('iconPending');
+
+        // New Frames Elements
+        const framesContainer = document.getElementById('framesContainer');
+        const framesGrid = document.getElementById('framesGrid');
+
+        // --- Event Listeners ---
+
+        // Handle video file upload
+        videoUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const fileURL = URL.createObjectURL(file);
+                videoPreview.src = fileURL;
+                videoContainer.classList.remove('hidden');
+                analyzeButton.classList.remove('hidden');
+                resultsContainer.classList.add('hidden');
+                errorContainer.classList.add('hidden');
+                progressContainer.classList.add('hidden');
+                framesContainer.classList.add('hidden'); // Hide frames on new upload
+                framesGrid.innerHTML = ''; // Clear old frames
+            }
+        });
+
+        // Handle analyze button click
+        analyzeButton.addEventListener('click', async () => {
+            if (!videoPreview.src || videoPreview.duration === 0) {
+                showError("Please upload a valid video file first.");
+                return;
+            }
+            
+            // --- Show loading state ---
+            analyzeButton.classList.add('hidden');
+            resultsContainer.classList.add('hidden');
+            errorContainer.classList.add('hidden');
+            framesContainer.classList.add('hidden'); // Hide old frames
+            framesGrid.innerHTML = ''; // Clear old frames
+            analyzeButton.disabled = true;
+            
+            // --- Reset and show progress indicator ---
+            progressContainer.classList.remove('hidden');
+            setStepState('step1', 'in-progress');
+            setStepState('step2', 'pending');
+
+            try {
+                // 1. Extract frames from the video
+                const frameCount = 6; // Grab 6 frames spaced evenly
+                const frames = await extractFrames(videoPreview, frameCount);
+                
+                if (frames.length === 0) {
+                    throw new Error("Could not extract frames from the video.");
+                }
+
+                // --- NEW: Display extracted frames ---
+                displayFrames(frames);
+                framesContainer.classList.remove('hidden');
+
+                // Update progress: Step 1 complete, Step 2 in-progress
+                setStepState('step1', 'complete');
+                setStepState('step2', 'in-progress');
+
+                // 2. Call Gemini API with the frames
+                const analysis = await callGeminiApi(frames);
+
+                // Update progress: Step 2 complete
+                setStepState('step2', 'complete');
+
+                // 3. Display results
+                analysisText.textContent = analysis;
+                resultsContainer.classList.remove('hidden');
+                progressContainer.classList.add('hidden'); // Hide progress on success
+
+            } catch (err) {
+                console.error("Analysis failed:", err);
+                showError(err.message || "An unknown error occurred during analysis.");
+                progressContainer.classList.add('hidden'); // Hide progress on error
+            } finally {
+                // Re-enable button
+                analyzeButton.classList.remove('hidden');
+                analyzeButton.disabled = false;
+            }
+        });
+
+        // --- Core Functions ---
+
+        /**
+         * Updates the state of a progress step.
+         * @param {'step1' | 'step2'} stepId - The ID of the step to update.
+         * @param {'pending' | 'in-progress' | 'complete'} state - The new state.
+         */
+        function setStepState(stepId, state) {
+            let step, icon, text;
+            if (stepId === 'step1') {
+                step = step1;
+                icon = step1Icon;
+                text = step1Text;
+            } else {
+                step = step2;
+                icon = step2Icon;
+                text = step2Text;
+            }
+            icon.innerHTML = '';
+            text.classList.remove('text-gray-500', 'text-blue-600', 'text-green-600');
+            step.classList.remove('text-gray-500', 'text-blue-600', 'text-green-600');
+
+            if (state === 'pending') {
+                icon.appendChild(iconPending.cloneNode(true));
+                step.classList.add('text-gray-500');
+            } else if (state === 'in-progress') {
+                icon.appendChild(iconInProgress.cloneNode(true));
+                step.classList.add('text-blue-600');
+            } else if (state === 'complete') {
+                icon.appendChild(iconComplete.cloneNode(true));
+                step.classList.add('text-green-600');
+            }
+        }
+
+        /**
+         * NEW: Injects the extracted frames into the DOM.
+         * @param {Array<{dataUrl: string, base64Data: string}>} frames - Array of frame objects.
+         */
+        function displayFrames(frames) {
+            framesGrid.innerHTML = ''; // Clear any previous frames
+            frames.forEach((frame, index) => {
+                const img = document.createElement('img');
+                img.src = frame.dataUrl;
+                img.alt = `Analysis Frame ${index + 1}`;
+                img.className = "w-full h-auto rounded-lg shadow-md border border-gray-200";
+                framesGrid.appendChild(img);
+            });
+        }
+
+
+        /**
+         * Extracts a specified number of frames from a video element.
+         * @param {HTMLVideoElement} video - The video element to extract frames from.
+         * @param {number} frameCount - The number of frames to extract.
+         * @returns {Promise<Array<{dataUrl: string, base64Data: string}>>} A promise that resolves to an array of frame objects.
+         */
+        function extractFrames(video, frameCount) {
+            return new Promise((resolve, reject) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const frames = [];
+                const duration = video.duration;
+
+                if (duration === 0 || isNaN(duration)) {
+                    return reject(new Error("Video duration is invalid."));
+                }
+                
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    
+                    if (canvas.width === 0 || canvas.height === 0) {
+                         return reject(new Error("Video dimensions are zero. Cannot extract frames."));
+                    }
+
+                    let framesExtracted = 0;
+                    let hasSeeked = false; 
+
+                    video.onseeked = () => {
+                        if (hasSeeked) return; 
+                        hasSeeked = true;
+
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        
+                        // --- MODIFIED: Get both dataUrl and base64 data ---
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                        const base64Data = dataUrl.split(',')[1];
+                        frames.push({ dataUrl, base64Data });
+                        
+                        framesExtracted++;
+
+                        if (framesExtracted === frameCount) {
+                            video.currentTime = 0;
+                            video.onseeked = null; 
+                            video.onerror = null;
+                            resolve(frames);
+                        } else {
+                            seekNextFrame();
+                        }
+                    };
+
+                    video.onerror = (e) => reject(new Error("Error seeking video."));
+
+                    function seekNextFrame() {
+                        if (framesExtracted < frameCount) {
+                            const time = (duration / (frameCount + 1)) * (framesExtracted + 1);
+                            hasSeeked = false; 
+                            video.currentTime = time;
+                        }
+                    }
+
+                    seekNextFrame();
+                };
+                
+                if (video.readyState >= 1) { // HAVE_METADATA
+                    video.onloadedmetadata();
+                }
+
+                setTimeout(() => {
+                    if (frames.length === 0) {
+                        reject(new Error("Video metadata load timeout."));
+                    }
+                }, 5000);
+            });
+        }
+
+        /**
+         * Calls the Gemini API with the extracted frames for analysis.
+         * @param {Array<{dataUrl: string, base64Data: string}>} frames - Array of frame objects.
+         * @returns {Promise<string>} A promise that resolves to the text analysis from the AI.
+         */
+        async function callGeminiApi(frames) {
+            const apiKey = ""; // API key is handled by the environment
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+            const systemPrompt = `You are an expert rowing coach and biomechanics analyst.
+You will be given a series of ${frames.length} frames from a user's rowing stroke.
+Your task is to analyze these frames and provide clear, concise, and actionable feedback.
+Structure your feedback as follows:
+1.  **Overall Impression:** A 1-2 sentence summary of the stroke.
+2.  **What You're Doing Well:** 1-2 positive points.
+3.  **Key Areas for Improvement:** 2-3 specific, high-priority items. For each item, explain *what* the issue is (e.g., "breaking the arms early," "opening the back too soon," "rounding the back at the catch") and *why* it matters (e.g., "this leaks power," "this puts stress on your lower back").
+4.  **Actionable Drill:** Suggest one simple drill to help fix the main issue.
+
+Be encouraging and professional. Refer to the phases of the stroke (Catch, Drive, Finish, Recovery) if you can identify them.`;
+
+            const userPrompt = `Please analyze my rowing form based on these ${frames.length} frames from my stroke. What can I improve?`;
+
+            // --- MODIFIED: Map frames to extract base64Data ---
+            const parts = [
+                { text: userPrompt },
+                ...frames.map(frame => ({
+                    inlineData: {
+                        mimeType: "image/jpeg",
+                        data: frame.base64Data 
+                    }
+                }))
+            ];
+
+            const payload = {
+                contents: [{
+                    role: "user",
+                    parts: parts
+                }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            const response = await fetchWithBackoff(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                console.error("API Error Response:", errorBody);
+                throw new Error(`API request failed with status ${response.status}.`);
+            }
+
+            const result = await response.json();
+            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!text) {
+                console.error("Invalid API response structure:", result);
+                throw new Error("Failed to get a valid analysis from the AI.");
+            }
+
+            return text;
+        }
+
+        /**
+         * Fetches a resource with exponential backoff for retries.
+         * @param {string} url - The URL to fetch.
+         * @param {object} options - The options for the fetch request.
+         * @param {number} maxRetries - The maximum number of retries.
+         * @param {number} baseDelay - The base delay in ms for backoff.
+         * @returns {Promise<Response>}
+         */
+        async function fetchWithBackoff(url, options, maxRetries = 3, baseDelay = 1000) {
+            let attempt = 0;
+            while (attempt < maxRetries)
