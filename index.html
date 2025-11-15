@@ -97,7 +97,7 @@
         <div id="resultsContainer" class="hidden mt-8">
             <h2 class="text-xl sm:text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Analysis Results:</h2>
             
-            <!-- *** NEW: Frames Container *** -->
+            <!-- Frames Container -->
             <div id="framesContainer" class="hidden mb-6">
                 <h3 class="text-lg font-semibold text-gray-700 mb-3">Analyzed Frames:</h3>
                 <div id="framesGrid" class="grid grid-cols-3 gap-2 sm:gap-4">
@@ -147,23 +147,53 @@
         // Handle video file upload
         videoUpload.addEventListener('change', (event) => {
             const file = event.target.files[0];
+            
+            // --- *** BUG FIX STARTS HERE *** ---
+            // Reset UI on new file selection
+            analyzeButton.classList.add('hidden'); // Hide button
+            errorContainer.classList.add('hidden');
+            resultsContainer.classList.add('hidden');
+            progressContainer.classList.add('hidden');
+            framesContainer.classList.add('hidden'); 
+            framesGrid.innerHTML = ''; 
+
             if (file) {
                 const fileURL = URL.createObjectURL(file);
                 videoPreview.src = fileURL;
+                
+                // Show video container
                 videoContainer.classList.remove('hidden');
-                analyzeButton.classList.remove('hidden');
-                resultsContainer.classList.add('hidden');
-                errorContainer.classList.add('hidden');
-                progressContainer.classList.add('hidden');
-                framesContainer.classList.add('hidden'); // Hide frames on new upload
-                framesGrid.innerHTML = ''; // Clear old frames
+
+                // NEW: Wait for metadata to load before showing the button
+                videoPreview.onloadedmetadata = () => {
+                    // Check for valid duration
+                    if (videoPreview.duration > 0 && !isNaN(videoPreview.duration)) {
+                        analyzeButton.classList.remove('hidden'); // Show button
+                        errorContainer.classList.add('hidden');
+                    } else {
+                        showError("Video file seems corrupted or has no duration. Please try another.");
+                        videoContainer.classList.add('hidden');
+                    }
+                };
+                
+                // NEW: Handle cases where the file is not a valid video
+                videoPreview.onerror = () => {
+                    showError("Invalid file type. Please upload a valid video file.");
+                    videoContainer.classList.add('hidden');
+                    analyzeButton.classList.add('hidden');
+                };
+            } else {
+                // No file selected, hide everything
+                videoContainer.classList.add('hidden');
             }
+            // --- *** BUG FIX ENDS HERE *** ---
         });
 
         // Handle analyze button click
         analyzeButton.addEventListener('click', async () => {
-            if (!videoPreview.src || videoPreview.duration === 0) {
-                showError("Please upload a valid video file first.");
+            // Check again for safety, though onloadedmetadata should prevent this
+            if (!videoPreview.src || videoPreview.duration === 0 || isNaN(videoPreview.duration)) {
+                showError("Video is not ready. Please re-upload.");
                 return;
             }
             
@@ -171,8 +201,8 @@
             analyzeButton.classList.add('hidden');
             resultsContainer.classList.add('hidden');
             errorContainer.classList.add('hidden');
-            framesContainer.classList.add('hidden'); // Hide old frames
-            framesGrid.innerHTML = ''; // Clear old frames
+            framesContainer.classList.add('hidden'); 
+            framesGrid.innerHTML = ''; 
             analyzeButton.disabled = true;
             
             // --- Reset and show progress indicator ---
@@ -282,66 +312,55 @@
                 const frames = [];
                 const duration = video.duration;
 
+                // This check is now safer because we know metadata is loaded
                 if (duration === 0 || isNaN(duration)) {
                     return reject(new Error("Video duration is invalid."));
                 }
                 
-                video.onloadedmetadata = () => {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    
-                    if (canvas.width === 0 || canvas.height === 0) {
-                         return reject(new Error("Video dimensions are zero. Cannot extract frames."));
-                    }
-
-                    let framesExtracted = 0;
-                    let hasSeeked = false; 
-
-                    video.onseeked = () => {
-                        if (hasSeeked) return; 
-                        hasSeeked = true;
-
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        
-                        // --- MODIFIED: Get both dataUrl and base64 data ---
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                        const base64Data = dataUrl.split(',')[1];
-                        frames.push({ dataUrl, base64Data });
-                        
-                        framesExtracted++;
-
-                        if (framesExtracted === frameCount) {
-                            video.currentTime = 0;
-                            video.onseeked = null; 
-                            video.onerror = null;
-                            resolve(frames);
-                        } else {
-                            seekNextFrame();
-                        }
-                    };
-
-                    video.onerror = (e) => reject(new Error("Error seeking video."));
-
-                    function seekNextFrame() {
-                        if (framesExtracted < frameCount) {
-                            const time = (duration / (frameCount + 1)) * (framesExtracted + 1);
-                            hasSeeked = false; 
-                            video.currentTime = time;
-                        }
-                    }
-
-                    seekNextFrame();
-                };
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
                 
-                if (video.readyState >= 1) { // HAVE_METADATA
-                    video.onloadedmetadata();
+                if (canvas.width === 0 || canvas.height === 0) {
+                        return reject(new Error("Video dimensions are zero. Cannot extract frames."));
                 }
 
-                setTimeout(() => {
-                    if (frames.length === 0) {
-                        reject(new Error("Video metadata load timeout."));
+                let framesExtracted = 0;
+                let hasSeeked = false; 
+
+                video.onseeked = () => {
+                    if (hasSeeked) return; 
+                    hasSeeked = true;
+
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    const base64Data = dataUrl.split(',')[1];
+                    frames.push({ dataUrl, base64Data });
+                    
+                    framesExtracted++;
+
+                    if (framesExtracted === frameCount) {
+                        video.currentTime = 0;
+                        video.onseeked = null; 
+                        video.onerror = null;
+                        resolve(frames);
+                    } else {
+                        seekNextFrame();
                     }
-                }, 5000);
+                };
+
+                video.onerror = (e) => reject(new Error("Error seeking video during frame extraction."));
+
+                function seekNextFrame() {
+                    if (framesExtracted < frameCount) {
+                        const time = (duration / (frameCount + 1)) * (framesExtracted + 1);
+                        hasSeeked = false; 
+                        video.currentTime = time;
+                    }
+                }
+
+                // Start the extraction process
+                seekNextFrame();
             });
         }
 
@@ -351,7 +370,14 @@
          * @returns {Promise<string>} A promise that resolves to the text analysis from the AI.
          */
         async function callGeminiApi(frames) {
-            const apiKey = "AIzaSyC_oMpQniVQFyUzHmY7tU4Q7UidsMGs_Ic"; // API key is handled by the environment
+            // --- REMEMBER TO PASTE YOUR API KEY HERE ---
+            const apiKey = ""; // <-- PASTE YOUR GOOGLE AI STUDIO KEY HERE
+            // ------------------------------------------
+
+            if (!apiKey) {
+                throw new Error("API key is missing. Please add your API key to the callGeminiApi function.");
+            }
+
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
 
             const systemPrompt = `You are an expert rowing coach and biomechanics analyst.
@@ -367,7 +393,6 @@ Be encouraging and professional. Refer to the phases of the stroke (Catch, Drive
 
             const userPrompt = `Please analyze my rowing form based on these ${frames.length} frames from my stroke. What can I improve?`;
 
-            // --- MODIFIED: Map frames to extract base64Data ---
             const parts = [
                 { text: userPrompt },
                 ...frames.map(frame => ({
@@ -395,9 +420,20 @@ Be encouraging and professional. Refer to the phases of the stroke (Catch, Drive
             });
 
             if (!response.ok) {
-                const errorBody = await response.text();
+                const errorBody = await response.json().catch(() => response.text());
                 console.error("API Error Response:", errorBody);
-                throw new Error(`API request failed with status ${response.status}.`);
+                
+                let errorMsg = `API request failed with status ${response.status}.`;
+                if (errorBody?.error?.message) {
+                    errorMsg += ` Message: ${errorBody.error.message}`;
+                }
+                if (response.status === 400) {
+                     errorMsg += " This often means the API key is invalid, restricted, or billing is not enabled.";
+                }
+                if (response.status === 403) {
+                    errorMsg += " This often means the API is not enabled or the key's 'referer' restrictions are incorrect.";
+                }
+                throw new Error(errorMsg);
             }
 
             const result = await response.json();
@@ -421,4 +457,33 @@ Be encouraging and professional. Refer to the phases of the stroke (Catch, Drive
          */
         async function fetchWithBackoff(url, options, maxRetries = 3, baseDelay = 1000) {
             let attempt = 0;
-            while (attempt < maxRetries)
+            while (attempt < maxRetries) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.status === 429 || (response.status >= 500 && response.status <= 599)) {
+                        throw new Error(`Retryable error: ${response.status}`);
+                    }
+                    return response; // Success
+                } catch (error) {
+                    attempt++;
+                    if (attempt >= maxRetries) {
+                        throw error; // Max retries reached
+                    }
+                    const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+
+        /**
+         * Displays an error message to the user.
+         * @param {string} message - The error message to display.
+         */
+        function showError(message) {
+            errorText.textContent = message;
+            errorContainer.classList.remove('hidden');
+        }
+
+    </script>
+</body>
+</html>
